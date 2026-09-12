@@ -1,0 +1,564 @@
+<title>Timelock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Karla:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg: #f4f5f9;
+    --surface: #ffffff;
+    --surface-2: #e9eaf2;
+    --border: #d8dae6;
+    --text: #1c1e2a;
+    --text-secondary: #5b5e73;
+    --text-muted: #8b8ea3;
+    --aot: #5b3df0;
+    --aot-soft: #5b3df01a;
+    --jit: #a8690c;
+    --jit-soft: #a8690c1a;
+    --atomic: #009379;
+    --atomic-soft: #0093791a;
+    --gap: #c23a3a;
+    --gap-soft: #c23a3a1a;
+    --grid-line: #d8dae6;
+    --focus: #1c6bd6;
+    --shadow: 0 1px 2px rgba(28,30,42,0.06), 0 10px 28px -14px rgba(28,30,42,0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14151d;
+      --surface: #1b1d28;
+      --surface-2: #232633;
+      --border: #323548;
+      --text: #ecedf3;
+      --text-secondary: #a8abbe;
+      --text-muted: #767a90;
+      --aot: #7c6df2;
+      --aot-soft: #7c6df226;
+      --jit: #c07a10;
+      --jit-soft: #c07a1026;
+      --atomic: #1f9c8f;
+      --atomic-soft: #1f9c8f26;
+      --gap: #e0605a;
+      --gap-soft: #e0605a26;
+      --grid-line: #323548;
+      --focus: #7fa8ff;
+      --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 34px -16px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14151d; --surface: #1b1d28; --surface-2: #232633; --border: #323548;
+    --text: #ecedf3; --text-secondary: #a8abbe; --text-muted: #767a90;
+    --aot: #7c6df2; --aot-soft: #7c6df226; --jit: #c07a10; --jit-soft: #c07a1026;
+    --atomic: #1f9c8f; --atomic-soft: #1f9c8f26; --gap: #e0605a; --gap-soft: #e0605a26;
+    --grid-line: #323548; --focus: #7fa8ff;
+    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 34px -16px rgba(0,0,0,0.6);
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Karla", ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.55; padding: 0 20px; }
+  ::selection { background: var(--aot-soft); }
+  a { color: inherit; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding-block: 40px 84px; }
+  .mono { font-family: "Fragment Mono", ui-monospace, monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .eyebrow { font-family: "Fragment Mono", monospace; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); display: flex; gap: 10px; align-items: center; margin-bottom: 22px; }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--aot); }
+  .eyebrow .dot.b { background: var(--jit); }
+  .eyebrow .dot.c { background: var(--atomic); }
+
+  h1.hero-title { font-family: "Sora", ui-sans-serif, sans-serif; font-weight: 700; font-size: clamp(2.1rem, 4.6vw, 3.4rem); line-height: 1.08; letter-spacing: -0.015em; margin: 0 0 18px; text-wrap: balance; max-width: 18ch; }
+  h1.hero-title .g { color: var(--gap); }
+  .hero-sub { font-size: 1.07rem; color: var(--text-secondary); max-width: 68ch; margin: 0 0 8px; }
+  .hero-sub strong { color: var(--text); font-weight: 700; }
+
+  section { margin-top: 60px; }
+  .section-head { margin-bottom: 20px; }
+  .section-kicker { font-family: "Fragment Mono", monospace; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 8px; }
+  h2 { font-family: "Sora", sans-serif; font-weight: 700; font-size: 1.7rem; margin: 0 0 8px; text-wrap: balance; }
+  .section-dek { color: var(--text-secondary); max-width: 70ch; margin: 0; font-size: 0.97rem; }
+
+  /* ---- workflow picker ---- */
+  .wf-row { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+  .wf-btn { font: inherit; font-family: "Karla", sans-serif; font-weight: 600; font-size: 0.9rem; background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); border-radius: 999px; padding: 9px 18px; cursor: pointer; }
+  .wf-btn.active { background: var(--aot-soft); border-color: var(--aot); color: var(--aot); }
+  .wf-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* ---- step cards / builder ---- */
+  .steps-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .step-card { display: grid; grid-template-columns: 30px 1fr auto; gap: 14px; align-items: start; padding: 16px 16px; border-bottom: 1px solid var(--border); }
+  .step-card:last-child { border-bottom: none; }
+  .step-num { font-family: "Fragment Mono", monospace; font-size: 12px; color: var(--text-muted); padding-top: 3px; }
+  .step-main .label { font-weight: 700; font-size: 1rem; margin-bottom: 4px; }
+  .step-main .deps { font-size: 12px; color: var(--text-muted); font-family: "Fragment Mono", monospace; margin-bottom: 8px; }
+  .step-main .field-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .step-main input[type="text"] {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    font: inherit; font-size: 0.86rem; padding: 7px 10px; min-width: 220px; flex: 1;
+  }
+  .kind-toggle { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-family: "Fragment Mono", monospace; font-size: 11px; text-transform: uppercase; }
+  .kind-toggle button { border: none; background: var(--surface-2); color: var(--text-muted); padding: 7px 10px; cursor: pointer; font: inherit; }
+  .kind-toggle button.on.aot { background: var(--aot); color: white; }
+  .kind-toggle button.on.jit { background: var(--jit); color: white; }
+  .atomic-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .atomic-check input { accent-color: var(--atomic); }
+  .step-badge { font-family: "Fragment Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 6px; white-space: nowrap; height: fit-content; }
+  .step-badge.aot { background: var(--aot-soft); color: var(--aot); }
+  .step-badge.jit { background: var(--jit-soft); color: var(--jit); }
+
+  /* ---- controls ---- */
+  .controls { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 30px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .controls label { font-family: "Fragment Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+  .controls .slider-wrap { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
+  .controls input[type="range"] { flex: 1; accent-color: var(--gap); }
+  .controls .val { font-family: "Fragment Mono", monospace; font-weight: 700; color: var(--text); }
+
+  /* ---- DAG diagram ---- */
+  .dag-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 24px; }
+  svg text { font-family: "Fragment Mono", monospace; }
+
+  /* ---- gap report ---- */
+  .gap-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 26px 28px; margin-bottom: 24px; display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; }
+  @media (max-width: 700px) { .gap-hero { grid-template-columns: 1fr; } }
+  .gap-number { font-family: "Sora", sans-serif; font-weight: 800; font-size: 3.4rem; color: var(--gap); line-height: 1; white-space: nowrap; }
+  .gap-number .unit { font-size: 1.1rem; font-weight: 600; color: var(--text-secondary); margin-left: 6px; }
+  .gap-copy p { margin: 0 0 8px; color: var(--text-secondary); font-size: 0.95rem; }
+  .gap-copy strong { color: var(--text); }
+
+  .edge-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  .edge-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; }
+  .edge-row .path { font-family: "Fragment Mono", monospace; font-size: 12.5px; color: var(--text-secondary); flex: 1; min-width: 160px; }
+  .edge-row .path b { color: var(--text); }
+  .edge-row .bar-track { flex: 2; min-width: 120px; height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+  .edge-row .bar-fill { height: 100%; background: var(--gap); border-radius: 999px; }
+  .edge-row .bar-fill.zero { background: var(--atomic); }
+  .edge-row .amt { font-family: "Fragment Mono", monospace; font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  .edge-row .amt.zero { color: var(--atomic); }
+  .edge-row .amt.nonzero { color: var(--gap); }
+
+  /* ---- mechanism table ---- */
+  .mech-table-wrap { overflow-x: auto; }
+  .mech-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .mech-table th, .mech-table td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .mech-table tr:last-child th, .mech-table tr:last-child td { border-bottom: none; }
+  .mech-table th { width: 20%; font-family: "Fragment Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600; background: var(--surface-2); }
+  .mech-table td.yes { border-left: 2px solid var(--atomic); }
+  .mech-table td.no { border-left: 2px solid var(--gap); }
+  .mech-table .k { font-family: "Fragment Mono", monospace; font-size: 0.85em; background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+
+  .method-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; }
+  .method-box p { margin: 0 0 14px; color: var(--text-secondary); font-size: 0.95rem; }
+  .method-box p:last-child { margin-bottom: 0; }
+  .method-box strong { color: var(--text); }
+  .method-box a { color: var(--aot); text-decoration: underline; text-decoration-color: var(--aot-soft); text-underline-offset: 2px; }
+  .method-box .src { font-size: 0.85rem; }
+
+  footer { margin-top: 70px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 12.5px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+</style>
+
+<div class="wrap">
+
+  <div class="eyebrow"><span class="dot"></span><span class="dot b"></span><span class="dot c"></span>RAIKU FIELD BUILD &middot; TIMELOCK</div>
+
+  <h1 class="hero-title">A scheduler for blockspace finds its own <span class="g">blind spot</span>.</h1>
+  <p class="hero-sub">Raiku's own materials name the requirement directly: <strong>multi-leg institutional trades that must execute whole, because partial execution leaves an exposure that was never part of the mandate.</strong> Raiku also documents exactly one way to make several transactions land as a single unit, same block, JIT, bundled. Everything else, a sell now and a hedge two slots later, gets each leg a real guarantee individually and nothing that spans between them. Timelock takes a declared multi-step workflow, assigns every leg to a real Raiku primitive, and then computes the one number nobody has published: how many slots of unguaranteed exposure survive even when every leg is scheduled correctly.</p>
+
+  <!-- ================= WORKFLOW PICKER ================= -->
+  <section id="workflow" style="margin-top:44px;">
+    <div class="section-head">
+      <p class="section-kicker">01 &middot; Declare the workflow</p>
+      <h2>Two shapes institutions actually need</h2>
+      <p class="section-dek">Pick a workflow, then edit any step: change its window or condition, or mark it atomic with the step before it. The classification and the schedule recompute from real Raiku rules, not from a script.</p>
+    </div>
+    <div class="wf-row" id="wfRow"></div>
+    <div class="steps-panel" id="stepsPanel"></div>
+  </section>
+
+  <!-- ================= CONTROLS ================= -->
+  <section style="margin-top:0;">
+    <div class="controls">
+      <label>Network contention right now</label>
+      <div class="slider-wrap">
+        <input type="range" id="contentionSlider" min="0" max="8" step="1" value="2" />
+        <span class="val num" id="contentionVal">2</span>
+        <span style="color:var(--text-muted); font-size:12px;">extra slots a JIT leg may need to win its auction</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DAG ================= -->
+  <section id="dag">
+    <div class="section-head">
+      <p class="section-kicker">02 &middot; Compiled plan</p>
+      <h2>Every leg, classified against a real rule</h2>
+      <p class="section-dek">A step with a known future window and no live condition gets AOT, a reserved slot at a predictable price. A step that reacts to a live condition gets JIT, a sealed-bid auction at market fee plus 5 percent minimum. Two adjacent steps marked atomic must be submitted as one JIT bid before either outcome is known, that's the real trade, a guarantee in exchange for the ability to react.</p>
+    </div>
+    <div class="dag-card">
+      <svg id="dagSvg" viewBox="0 0 900 260" width="100%" height="auto" role="img" aria-label="Dependency graph of the workflow with each step classified as AOT, JIT, or an atomic group"></svg>
+      <div class="legend-row" style="display:flex; gap:18px; font-size:12px; color:var(--text-secondary); flex-wrap:wrap; margin-top:6px;">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--aot);margin-right:6px;"></span>AOT reservation</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--jit);margin-right:6px;"></span>JIT auction</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--atomic);margin-right:6px;"></span>atomic group, same block</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--gap);margin-right:6px;vertical-align:middle;"></span>unguaranteed gap</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GAP REPORT ================= -->
+  <section id="gap-report">
+    <div class="section-head">
+      <p class="section-kicker">03 &middot; The atomicity gap report</p>
+      <h2>What this workflow can't actually promise you</h2>
+      <p class="section-dek">Summed along the longest dependency chain in the plan above. This is the number that matters: every leg individually guaranteed, and still this much daylight between them.</p>
+    </div>
+    <div class="gap-hero">
+      <div class="gap-number"><span id="gapSlots">0</span><span class="unit">slots</span></div>
+      <div class="gap-copy">
+        <p><strong id="gapSeconds">0.0s</strong> of unavoidable exposure at 400ms per slot, the real, current Solana slot time, even in the case where every single leg wins its auction or its reservation on the first try.</p>
+        <p id="gapExplain">Sell confirms, then USDC sits unhedged until the buy leg lands, that gap is structural, not a bug in this plan.</p>
+      </div>
+    </div>
+    <div class="edge-list" id="edgeList"></div>
+  </section>
+
+  <!-- ================= MECHANISM ================= -->
+  <section id="mechanism">
+    <div class="section-head">
+      <p class="section-kicker">04 &middot; What Raiku actually guarantees, checked against the source</p>
+      <h2>The real primitives, and the real ceiling</h2>
+    </div>
+    <div class="mech-table-wrap">
+      <table class="mech-table">
+        <tr><th>AOT reservation</th><td class="yes">Documented. Select a future slot or window, English auction, predictable pricing. Used here for any step with a known window and no live condition.</td></tr>
+        <tr><th>JIT auction</th><td class="yes">Documented. Sealed-bid, immediate, minimum bid is the live priority fee plus 5 percent. Used here for any step with a condition that can only be evaluated live.</td></tr>
+        <tr><th>Same-block atomic group</th><td class="yes">Documented, JIT only: "a simultaneous purchase and sale is only valid if both legs execute together, is treated atomically." That's a single block. Used here when you mark two adjacent steps atomic.</td></tr>
+        <tr><th>Pre-confirmation</th><td class="yes">Documented: a cryptographic guarantee issued ahead of the slot stating a transaction will execute in slot N. This is the real receipt, not an invented status light.</td></tr>
+        <tr><th>Cross-slot atomicity for ordinary workflows</th><td class="no">Not documented. Nothing published guarantees that a step two or more slots later either lands or the earlier step unwinds. This is the gap this page measures.</td></tr>
+        <tr><th>Full workflow atomicity, if you need it today</th><td class="no">Requires standing up an Extension, your own off-chain execution environment, settling back to Solana via a cryptographic proof, chunked through Proof Streaming if large. Real, but a different, much heavier build than declaring a workflow.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= METHODOLOGY ================= -->
+  <section id="methodology">
+    <div class="section-head">
+      <p class="section-kicker">05 &middot; What's real and what's assumed</p>
+      <h2>Methodology</h2>
+    </div>
+    <div class="method-box">
+      <p><strong>Documented and used as-is:</strong> the AOT and JIT mechanics above, the same-block atomic grouping rule, and pre-confirmation, all quoted from Raiku's own blog. The requirement itself, that multi-leg institutional trades must execute whole or not at all, is Raiku's own stated language from the Engineering Contract series, not an assumption. Solana's real slot time, 400 milliseconds, is used to convert the slot count into seconds.</p>
+      <p><strong>Modeled and disclosed:</strong> the one-slot floor per non-atomic dependency is structural, two separate transactions cannot occupy the same instant unless explicitly bundled, so it holds regardless of network conditions. The contention slider above it is a disclosed assumption, an illustrative estimate of how many extra slots a JIT leg might need to win its auction under load, not a measured figure. Raiku's actual technical documentation and SDK remain gated behind their builder program pending public testnet, so nothing here submits to or reads from Raiku's real systems, the compiler's output is the plan a real integration would need to produce.</p>
+      <p class="src">Sources: <a href="https://raiku.com/blog/the-engineering-contract-what-the-rewritten-contract-makes-possible" target="_blank" rel="noopener">raiku.com, the Engineering Contract, what the rewritten contract makes possible</a> &middot; <a href="https://raiku.com/blog/raiku-the-deterministic-execution-layer-for-perp-dexs" target="_blank" rel="noopener">raiku.com, the deterministic execution layer for perp DEXs</a> &middot; <a href="https://raikuhandbook.org/jit-vs-aot.html" target="_blank" rel="noopener">raikuhandbook.org, JIT vs AOT</a></p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Timelock &middot; independent build, not affiliated with Raiku &middot; mechanics documented by Raiku</span>
+    <span>New research pass, built to spec after verification</span>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var SLOT_MS = 400;
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  // ---------------------------------------------------------------
+  // Workflow definitions. Each step: id, label, dependsOn[], hasWindow (bool),
+  // windowText, conditionText, atomicWithPrev (only meaningful if it has exactly one dependency)
+  // ---------------------------------------------------------------
+  var WORKFLOWS = {
+    rebalance: {
+      name: "Institutional rebalance",
+      steps: [
+        { id: "sell", label: "Sell 100 SOL → USDC", dependsOn: [], hasWindow: true, windowText: "slot window, next 40 slots", conditionText: "", atomicWithPrev: false },
+        { id: "buy", label: "Buy asset B with USDC proceeds", dependsOn: ["sell"], hasWindow: false, windowText: "", conditionText: "only if price(B) < Y", atomicWithPrev: false },
+        { id: "hedge", label: "Open hedge if exposure exceeds Z", dependsOn: ["buy"], hasWindow: false, windowText: "", conditionText: "only if exposure > Z", atomicWithPrev: false },
+        { id: "settle", label: "Record settlement receipt", dependsOn: ["hedge"], hasWindow: true, windowText: "slot window, next 10 slots", conditionText: "", atomicWithPrev: true }
+      ]
+    },
+    funding: {
+      name: "Perp funding pipeline",
+      steps: [
+        { id: "oracle", label: "Oracle price update ingested", dependsOn: [], hasWindow: false, conditionText: "on new oracle tick", atomicWithPrev: false },
+        { id: "margin", label: "Recompute margin across open positions", dependsOn: ["oracle"], hasWindow: false, conditionText: "only if oracle moved past threshold", atomicWithPrev: false },
+        { id: "funding", label: "Process funding payment", dependsOn: ["margin"], hasWindow: true, windowText: "fixed funding slot, every epoch", conditionText: "", atomicWithPrev: false }
+      ]
+    }
+  };
+
+  var state = { wf: "rebalance", contention: 2, overrides: {} };
+
+  function getSteps() {
+    var base = WORKFLOWS[state.wf].steps;
+    return base.map(function (s) {
+      var o = state.overrides[s.id] || {};
+      return Object.assign({}, s, o);
+    });
+  }
+
+  function classify(step) {
+    // A step with a live condition is JIT. A step with a window and no condition is AOT.
+    if (step.conditionText && step.conditionText.trim()) return "JIT";
+    return "AOT";
+  }
+
+  // ---------------------------------------------------------------
+  // Schedule + gap computation
+  // ---------------------------------------------------------------
+  function computeSchedule() {
+    var steps = getSteps();
+    var byId = {};
+    steps.forEach(function (s) { byId[s.id] = s; });
+
+    var landSlot = {};
+    var edges = []; // {from, to, exposure, atomic}
+
+    steps.forEach(function (s) {
+      var kind = classify(s);
+      if (s.dependsOn.length === 0) {
+        landSlot[s.id] = 0;
+        return;
+      }
+      var parent = s.dependsOn[0]; // single-parent chain in both example workflows
+      var parentLand = landSlot[parent] !== undefined ? landSlot[parent] : 0;
+      var atomic = !!s.atomicWithPrev;
+      var exposure = 0;
+      if (!atomic) {
+        exposure = 1; // structural floor: two separate transactions cannot land in the same instant
+        if (kind === "JIT") exposure += state.contention;
+      }
+      landSlot[s.id] = parentLand + (atomic ? 0 : exposure);
+      edges.push({ from: parent, to: s.id, exposure: atomic ? 0 : exposure, atomic: atomic });
+    });
+
+    var totalGap = edges.reduce(function (sum, e) { return sum + e.exposure; }, 0);
+    return { steps: steps, byId: byId, landSlot: landSlot, edges: edges, totalGap: totalGap };
+  }
+
+  // ---------------------------------------------------------------
+  // Rendering: workflow picker
+  // ---------------------------------------------------------------
+  function renderWfPicker() {
+    var row = document.getElementById("wfRow");
+    row.innerHTML = "";
+    Object.keys(WORKFLOWS).forEach(function (key) {
+      var btn = document.createElement("button");
+      btn.className = "wf-btn" + (state.wf === key ? " active" : "");
+      btn.textContent = WORKFLOWS[key].name;
+      btn.addEventListener("click", function () {
+        state.wf = key;
+        state.overrides = {};
+        renderWfPicker();
+        renderAll();
+      });
+      row.appendChild(btn);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Rendering: step editor cards
+  // ---------------------------------------------------------------
+  function renderSteps() {
+    var panel = document.getElementById("stepsPanel");
+    panel.innerHTML = "";
+    var steps = getSteps();
+    steps.forEach(function (s, i) {
+      var kind = classify(s);
+      var card = document.createElement("div");
+      card.className = "step-card";
+
+      var num = document.createElement("div");
+      num.className = "step-num";
+      num.textContent = String(i + 1).padStart(2, "0");
+      card.appendChild(num);
+
+      var main = document.createElement("div");
+      main.className = "step-main";
+      var label = document.createElement("div");
+      label.className = "label";
+      label.textContent = s.label;
+      main.appendChild(label);
+
+      var deps = document.createElement("div");
+      deps.className = "deps";
+      deps.textContent = s.dependsOn.length ? ("after " + s.dependsOn.join(", ")) : "root step, no dependency";
+      main.appendChild(deps);
+
+      var fieldRow = document.createElement("div");
+      fieldRow.className = "field-row";
+
+      var toggle = document.createElement("div");
+      toggle.className = "kind-toggle";
+      var aotBtn = document.createElement("button");
+      aotBtn.textContent = "AOT window";
+      aotBtn.className = kind === "AOT" ? "on aot" : "";
+      var jitBtn = document.createElement("button");
+      jitBtn.textContent = "JIT condition";
+      jitBtn.className = kind === "JIT" ? "on jit" : "";
+      aotBtn.addEventListener("click", function () {
+        state.overrides[s.id] = Object.assign({}, state.overrides[s.id], { conditionText: "", windowText: s.windowText || "slot window, next 20 slots", hasWindow: true });
+        renderAll();
+      });
+      jitBtn.addEventListener("click", function () {
+        state.overrides[s.id] = Object.assign({}, state.overrides[s.id], { conditionText: s.conditionText || "only if condition holds", hasWindow: false });
+        renderAll();
+      });
+      toggle.appendChild(aotBtn); toggle.appendChild(jitBtn);
+      fieldRow.appendChild(toggle);
+
+      var textInput = document.createElement("input");
+      textInput.type = "text";
+      textInput.value = kind === "AOT" ? s.windowText : s.conditionText;
+      textInput.addEventListener("input", function () {
+        var patch = kind === "AOT" ? { windowText: textInput.value } : { conditionText: textInput.value };
+        state.overrides[s.id] = Object.assign({}, state.overrides[s.id], patch);
+        renderAll();
+      });
+      fieldRow.appendChild(textInput);
+
+      if (s.dependsOn.length === 1) {
+        var atomicLbl = document.createElement("label");
+        atomicLbl.className = "atomic-check";
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !!s.atomicWithPrev;
+        cb.addEventListener("change", function () {
+          state.overrides[s.id] = Object.assign({}, state.overrides[s.id], { atomicWithPrev: cb.checked });
+          renderAll();
+        });
+        atomicLbl.appendChild(cb);
+        atomicLbl.appendChild(document.createTextNode("atomic with previous"));
+        fieldRow.appendChild(atomicLbl);
+      }
+
+      main.appendChild(fieldRow);
+      card.appendChild(main);
+
+      var badge = document.createElement("div");
+      badge.className = "step-badge " + kind.toLowerCase();
+      badge.textContent = kind;
+      card.appendChild(badge);
+
+      panel.appendChild(card);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Rendering: DAG
+  // ---------------------------------------------------------------
+  function drawDag(sched) {
+    var svg = document.getElementById("dagSvg");
+    clear(svg);
+    var steps = sched.steps;
+    var n = steps.length;
+    var W = 900, H = 260;
+    var nodeW = 170, nodeH = 64;
+    var xGap = (W - 40 - nodeW) / Math.max(1, n - 1);
+    var y = H / 2 - nodeH / 2;
+
+    var pos = {};
+    steps.forEach(function (s, i) { pos[s.id] = { x: 20 + i * xGap, y: y }; });
+
+    var textCol = cssVar("--text"), mutedCol = cssVar("--text-muted"), gapCol = cssVar("--gap"), atomicCol = cssVar("--atomic");
+
+    // defs: arrow marker
+    var defs = el("defs", {});
+    var marker = el("marker", { id: "arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
+    marker.appendChild(el("path", { d: "M0,0 L8,4 L0,8 Z", fill: mutedCol }));
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    // edges
+    sched.edges.forEach(function (e) {
+      var p1 = pos[e.from], p2 = pos[e.to];
+      var x1 = p1.x + nodeW, y1 = p1.y + nodeH / 2;
+      var x2 = p2.x, y2 = p2.y + nodeH / 2;
+      var color = e.atomic ? atomicCol : gapCol;
+      var line = el("line", { x1: x1, y1: y1, x2: x2 - 9, y2: y2, stroke: color, "stroke-width": e.atomic ? 3 : 2, "stroke-dasharray": e.atomic ? "" : "5,4", "marker-end": "url(#arrow)" });
+      svg.appendChild(line);
+      var midX = (x1 + x2) / 2;
+      var lbl = e.atomic ? "0 slot gap" : (e.exposure + " slot gap");
+      var t = el("text", { x: midX, y: y1 - 10, "font-size": 10.5, fill: color, "text-anchor": "middle", "font-weight": 700 });
+      t.textContent = lbl;
+      svg.appendChild(t);
+    });
+
+    // nodes
+    steps.forEach(function (s) {
+      var kind = classify(s);
+      var color = kind === "AOT" ? cssVar("--aot") : cssVar("--jit");
+      var soft = kind === "AOT" ? cssVar("--aot-soft") : cssVar("--jit-soft");
+      var p = pos[s.id];
+      svg.appendChild(el("rect", { x: p.x, y: p.y, width: nodeW, height: nodeH, rx: 10, fill: soft, stroke: color, "stroke-width": 1.5 }));
+      var label = s.label.length > 26 ? s.label.slice(0, 24) + "…" : s.label;
+      var t1 = el("text", { x: p.x + 12, y: p.y + 24, "font-size": 11.5, fill: textCol, "font-weight": 700 });
+      t1.textContent = label;
+      svg.appendChild(t1);
+      var t2 = el("text", { x: p.x + 12, y: p.y + 44, "font-size": 10, fill: color, "font-weight": 700, "letter-spacing": "0.04em" });
+      t2.textContent = kind;
+      svg.appendChild(t2);
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Rendering: gap report
+  // ---------------------------------------------------------------
+  function renderGapReport(sched) {
+    document.getElementById("gapSlots").textContent = sched.totalGap;
+    document.getElementById("gapSeconds").textContent = (sched.totalGap * SLOT_MS / 1000).toFixed(2) + "s";
+
+    var atomicCount = sched.edges.filter(function (e) { return e.atomic; }).length;
+    var explain;
+    if (sched.totalGap === 0) {
+      explain = "Every dependency in this plan is marked atomic, so there is no unguaranteed gap left, but check the mechanism table below: that only works because each atomic pair gave up the ability to react to the step before it.";
+    } else {
+      explain = "Across " + sched.edges.length + " dependenc" + (sched.edges.length === 1 ? "y" : "ies") + " in this plan, " + atomicCount + " " + (atomicCount === 1 ? "is" : "are") + " bundled atomic and " + (sched.edges.length - atomicCount) + " carry a real, unguaranteed gap, a window where the mandate is only partially executed even though every individual leg did exactly what it was told.";
+    }
+    document.getElementById("gapExplain").textContent = explain;
+
+    var list = document.getElementById("edgeList");
+    list.innerHTML = "";
+    var maxExp = Math.max(1, Math.max.apply(null, sched.edges.map(function (e) { return e.exposure; })));
+    sched.edges.forEach(function (e) {
+      var row = document.createElement("div");
+      row.className = "edge-row";
+      var fromLbl = sched.byId[e.from].label;
+      var toLbl = sched.byId[e.to].label;
+      row.innerHTML =
+        '<div class="path"><b>' + fromLbl + '</b> → ' + toLbl + '</div>' +
+        '<div class="bar-track"><div class="bar-fill' + (e.exposure === 0 ? ' zero' : '') + '" style="width:' + (e.exposure === 0 ? 4 : (e.exposure / maxExp) * 100) + '%"></div></div>' +
+        '<div class="amt ' + (e.exposure === 0 ? 'zero' : 'nonzero') + '">' + (e.exposure === 0 ? 'atomic, 0 slots' : e.exposure + ' slot' + (e.exposure === 1 ? '' : 's')) + '</div>';
+      list.appendChild(row);
+    });
+  }
+
+  function renderAll() {
+    renderSteps();
+    var sched = computeSchedule();
+    drawDag(sched);
+    renderGapReport(sched);
+  }
+
+  document.getElementById("contentionSlider").addEventListener("input", function (e) {
+    state.contention = parseInt(e.target.value, 10);
+    document.getElementById("contentionVal").textContent = state.contention;
+    renderAll();
+  });
+
+  var mq = window.matchMedia("(prefers-color-scheme: dark)");
+  if (mq.addEventListener) mq.addEventListener("change", renderAll);
+
+  renderWfPicker();
+  renderAll();
+})();
+</script>
