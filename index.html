@@ -621,6 +621,29 @@
     });
   }
 
+  // Shrinks textEl's content to the longest prefix (plus an ellipsis) that
+  // actually measures within maxWidth in the rendered font, rather than
+  // guessing from character count. Falls back to the full text if it
+  // already fits, and to a bare "…" if nothing fits.
+  function fitText(textEl, fullText, maxWidth) {
+    textEl.textContent = fullText;
+    if (!(maxWidth > 0)) return fullText;
+    var w;
+    try { w = textEl.getBBox().width; } catch (e) { return fullText; }
+    if (w <= maxWidth) return fullText;
+    var lo = 0, hi = fullText.length, fit = "…";
+    while (hi - lo > 1) {
+      var mid = Math.floor((lo + hi) / 2);
+      var candidate = fullText.slice(0, mid) + "…";
+      textEl.textContent = candidate;
+      var cw;
+      try { cw = textEl.getBBox().width; } catch (e) { cw = 0; }
+      if (cw <= maxWidth) { lo = mid; fit = candidate; } else { hi = mid; }
+    }
+    textEl.textContent = fit;
+    return fit;
+  }
+
   // ---------------------------------------------------------------
   // Rendering: DAG
   // ---------------------------------------------------------------
@@ -703,9 +726,15 @@
       c.fill.setAttribute("fill", color);
 
       var lbl = e.atomic ? "0 slot gap" : (e.exposure + " slot" + (e.exposure === 1 ? "" : "s") + " gap");
-      c.label.textContent = lbl;
       var midX = (x1 + x2) / 2, labelY = y1 - 12;
       c.label.setAttribute("x", midX); c.label.setAttribute("y", labelY); c.label.setAttribute("fill", color);
+      var gapAvail = Math.max(0, (x2 - x1) - 10);
+      fitText(c.label, lbl, gapAvail);
+      if (c.label.textContent === "…" && gapAvail < 8) {
+        // Not even a lone ellipsis fits between these two nodes: hide the
+        // label rather than let it collide with either box.
+        c.label.textContent = "";
+      }
       try {
         var bbox = c.label.getBBox();
         c.halo.setAttribute("x", bbox.x - 5);
@@ -724,9 +753,8 @@
       c.rect.setAttribute("x", p.x); c.rect.setAttribute("y", p.y);
       c.rect.setAttribute("width", nodeW); c.rect.setAttribute("height", nodeH);
       c.rect.setAttribute("fill", soft); c.rect.setAttribute("stroke", color);
-      var label = s.label.length > 26 ? s.label.slice(0, 24) + "…" : s.label;
-      c.t1.textContent = label;
       c.t1.setAttribute("x", p.x + 12); c.t1.setAttribute("y", p.y + 24); c.t1.setAttribute("fill", textCol);
+      fitText(c.t1, s.label, nodeW - 24);
       c.t2.textContent = kind;
       c.t2.setAttribute("x", p.x + 12); c.t2.setAttribute("y", p.y + 44); c.t2.setAttribute("fill", color);
     });
