@@ -120,6 +120,13 @@
   /* ---- DAG diagram ---- */
   .dag-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 24px; }
   svg text { font-family: "Fragment Mono", monospace; }
+  #dagSvg rect, #dagSvg text { transition: fill 0.35s ease, stroke 0.35s ease, opacity 0.35s ease; }
+  #dagSvg line { transition: stroke 0.35s ease, stroke-width 0.35s ease, opacity 0.35s ease; }
+  #dagSvg .exp-bar-fill, #dagSvg .exp-bar-track { transition: width 0.35s ease, x 0.35s ease, fill 0.35s ease; }
+  #dagSvg .exp-halo { transition: x 0.35s ease, width 0.35s ease; }
+
+  @keyframes gapPulse { 0% { transform: scale(1); } 35% { transform: scale(1.16); } 100% { transform: scale(1); } }
+  .gap-number.pulse { animation: gapPulse 0.5s ease; }
 
   /* ---- gap report ---- */
   .gap-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 26px 28px; margin-bottom: 24px; display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; }
@@ -134,7 +141,7 @@
   .edge-row .path { font-family: "Fragment Mono", monospace; font-size: 12.5px; color: var(--text-secondary); flex: 1 1 100%; min-width: 0; }
   .edge-row .path b { color: var(--text); }
   .edge-row .bar-track { flex: 1 1 100px; min-width: 0; height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
-  .edge-row .bar-fill { height: 100%; background: var(--gap); border-radius: 999px; }
+  .edge-row .bar-fill { height: 100%; background: var(--gap); border-radius: 999px; transition: width 0.35s ease, background 0.35s ease; }
   .edge-row .bar-fill.zero { background: var(--atomic); }
   .edge-row .amt { font-family: "Fragment Mono", monospace; font-weight: 700; font-size: 12.5px; white-space: nowrap; }
   .edge-row .amt.zero { color: var(--atomic); }
@@ -240,7 +247,7 @@
       <p class="section-dek">Summed along the longest dependency chain in the plan above. This is the number that matters: every leg individually guaranteed, and still this much daylight between them.</p>
     </div>
     <div class="gap-hero">
-      <div class="gap-number"><span id="gapSlots">0</span><span class="unit">slots</span></div>
+      <div class="gap-number" id="gapNumber"><span id="gapSlots">0</span><span class="unit">slots</span></div>
       <div class="gap-copy">
         <p><strong id="gapSeconds">0.0s</strong> of unavoidable exposure at 400ms per slot, the real, current Solana slot time, even in the case where every single leg wins its auction or its reservation on the first try.</p>
         <p id="gapExplain">Sell confirms, then USDC sits unhedged until the buy leg lands, that gap is structural, not a bug in this plan.</p>
@@ -619,64 +626,126 @@
   // ---------------------------------------------------------------
   function drawDag(sched) {
     var svg = document.getElementById("dagSvg");
-    clear(svg);
     var steps = sched.steps;
     var n = steps.length;
     var W = 900, H = 260;
-    var nodeW = 170, nodeH = 64;
-    var xGap = (W - 40 - nodeW) / Math.max(1, n - 1);
+    var minGap = 84;
+    var nodeW = Math.max(120, Math.min(190, (W - 40 - (n - 1) * minGap) / Math.max(1, n)));
+    var nodeH = 64;
+    var stepX = nodeW + minGap;
     var y = H / 2 - nodeH / 2;
 
     var pos = {};
-    steps.forEach(function (s, i) { pos[s.id] = { x: 20 + i * xGap, y: y }; });
+    steps.forEach(function (s, i) { pos[s.id] = { x: 20 + i * stepX, y: y }; });
 
-    var textCol = cssVar("--text"), mutedCol = cssVar("--text-muted"), gapCol = cssVar("--gap"), atomicCol = cssVar("--atomic");
+    var textCol = cssVar("--text"), mutedCol = cssVar("--text-muted"), gapCol = cssVar("--gap"), atomicCol = cssVar("--atomic"), surface2 = cssVar("--surface-2"), surfaceCol = cssVar("--surface");
 
-    // defs: arrow marker
-    var defs = el("defs", {});
-    var marker = el("marker", { id: "arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
-    marker.appendChild(el("path", { d: "M0,0 L8,4 L0,8 Z", fill: mutedCol }));
-    defs.appendChild(marker);
-    svg.appendChild(defs);
+    // Rebuild from scratch only when the set of steps actually changes (workflow switch).
+    // Otherwise reuse the existing elements and just update their attributes, so CSS
+    // transitions animate the change instead of the diagram snapping to a new state.
+    var sig = steps.map(function (s) { return s.id; }).join("|");
+    if (svg.getAttribute("data-sig") !== sig) {
+      clear(svg);
+      svg.setAttribute("data-sig", sig);
+      svg.__cache = { nodes: {}, edges: {} };
 
-    // edges
+      var defs = el("defs", {});
+      var marker = el("marker", { id: "arrow", markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" });
+      marker.appendChild(el("path", { d: "M0,0 L8,4 L0,8 Z", fill: mutedCol }));
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      sched.edges.forEach(function (e) {
+        var key = e.from + ">" + e.to;
+        var line = el("line", { "marker-end": "url(#arrow)" });
+        var track = el("rect", { rx: 2, ry: 2 });
+        var fill = el("rect", { rx: 2, ry: 2, "class": "exp-bar-fill" });
+        var halo = el("rect", { rx: 4, ry: 4, fill: surfaceCol });
+        var label = el("text", { "text-anchor": "middle", "font-size": 9.5, "font-weight": 700 });
+        svg.appendChild(line); svg.appendChild(track); svg.appendChild(fill); svg.appendChild(halo); svg.appendChild(label);
+        svg.__cache.edges[key] = { line: line, track: track, fill: fill, halo: halo, label: label };
+      });
+
+      steps.forEach(function (s) {
+        var rect = el("rect", { rx: 10, "stroke-width": 1.5 });
+        var t1 = el("text", { "font-size": 11.5, "font-weight": 700 });
+        var t2 = el("text", { "font-size": 10, "font-weight": 700, "letter-spacing": "0.04em" });
+        svg.appendChild(rect); svg.appendChild(t1); svg.appendChild(t2);
+        svg.__cache.nodes[s.id] = { rect: rect, t1: t1, t2: t2 };
+      });
+    }
+
+    var maxSlots = 8;
     sched.edges.forEach(function (e) {
+      var key = e.from + ">" + e.to;
+      var c = svg.__cache.edges[key];
+      if (!c) return;
       var p1 = pos[e.from], p2 = pos[e.to];
       var x1 = p1.x + nodeW, y1 = p1.y + nodeH / 2;
       var x2 = p2.x, y2 = p2.y + nodeH / 2;
       var color = e.atomic ? atomicCol : gapCol;
-      var line = el("line", { x1: x1, y1: y1, x2: x2 - 9, y2: y2, stroke: color, "stroke-width": e.atomic ? 3 : 2, "stroke-dasharray": e.atomic ? "" : "5,4", "marker-end": "url(#arrow)" });
-      svg.appendChild(line);
-      var midX = (x1 + x2) / 2;
-      var lbl = e.atomic ? "0 slot gap" : (e.exposure + " slot gap");
-      var t = el("text", { x: midX, y: y1 - 10, "font-size": 10.5, fill: color, "text-anchor": "middle", "font-weight": 700 });
-      t.textContent = lbl;
-      svg.appendChild(t);
+
+      c.line.setAttribute("x1", x1); c.line.setAttribute("y1", y1);
+      c.line.setAttribute("x2", x2 - 9); c.line.setAttribute("y2", y2);
+      c.line.setAttribute("stroke", color);
+      c.line.setAttribute("stroke-width", e.atomic ? 3 : 2);
+      c.line.setAttribute("stroke-dasharray", e.atomic ? "" : "5,4");
+
+      var barW = Math.max(0, (x2 - x1) - 20);
+      var barX = x1 + 10, barY = y1 + 14;
+      c.track.setAttribute("x", barX); c.track.setAttribute("y", barY);
+      c.track.setAttribute("width", barW); c.track.setAttribute("height", 4);
+      c.track.setAttribute("fill", surface2);
+
+      var frac = e.atomic ? 0 : Math.max(0.05, Math.min(1, e.exposure / maxSlots));
+      c.fill.setAttribute("x", barX); c.fill.setAttribute("y", barY);
+      c.fill.setAttribute("width", e.atomic ? 0 : barW * frac); c.fill.setAttribute("height", 4);
+      c.fill.setAttribute("fill", color);
+
+      var lbl = e.atomic ? "0 slot gap" : (e.exposure + " slot" + (e.exposure === 1 ? "" : "s") + " gap");
+      c.label.textContent = lbl;
+      var midX = (x1 + x2) / 2, labelY = y1 - 12;
+      c.label.setAttribute("x", midX); c.label.setAttribute("y", labelY); c.label.setAttribute("fill", color);
+      try {
+        var bbox = c.label.getBBox();
+        c.halo.setAttribute("x", bbox.x - 5);
+        c.halo.setAttribute("y", bbox.y - 2);
+        c.halo.setAttribute("width", bbox.width + 10);
+        c.halo.setAttribute("height", bbox.height + 4);
+      } catch (err) { /* getBBox can be unavailable before first paint */ }
     });
 
-    // nodes
     steps.forEach(function (s) {
       var kind = classify(s);
       var color = kind === "AOT" ? cssVar("--aot") : cssVar("--jit");
       var soft = kind === "AOT" ? cssVar("--aot-soft") : cssVar("--jit-soft");
+      var c = svg.__cache.nodes[s.id];
       var p = pos[s.id];
-      svg.appendChild(el("rect", { x: p.x, y: p.y, width: nodeW, height: nodeH, rx: 10, fill: soft, stroke: color, "stroke-width": 1.5 }));
+      c.rect.setAttribute("x", p.x); c.rect.setAttribute("y", p.y);
+      c.rect.setAttribute("width", nodeW); c.rect.setAttribute("height", nodeH);
+      c.rect.setAttribute("fill", soft); c.rect.setAttribute("stroke", color);
       var label = s.label.length > 26 ? s.label.slice(0, 24) + "…" : s.label;
-      var t1 = el("text", { x: p.x + 12, y: p.y + 24, "font-size": 11.5, fill: textCol, "font-weight": 700 });
-      t1.textContent = label;
-      svg.appendChild(t1);
-      var t2 = el("text", { x: p.x + 12, y: p.y + 44, "font-size": 10, fill: color, "font-weight": 700, "letter-spacing": "0.04em" });
-      t2.textContent = kind;
-      svg.appendChild(t2);
+      c.t1.textContent = label;
+      c.t1.setAttribute("x", p.x + 12); c.t1.setAttribute("y", p.y + 24); c.t1.setAttribute("fill", textCol);
+      c.t2.textContent = kind;
+      c.t2.setAttribute("x", p.x + 12); c.t2.setAttribute("y", p.y + 44); c.t2.setAttribute("fill", color);
     });
   }
 
   // ---------------------------------------------------------------
   // Rendering: gap report
   // ---------------------------------------------------------------
+  var lastTotalGap = null;
   function renderGapReport(sched) {
     document.getElementById("gapSlots").textContent = sched.totalGap;
     document.getElementById("gapSeconds").textContent = (sched.totalGap * SLOT_MS / 1000).toFixed(2) + "s";
+    if (lastTotalGap !== null && lastTotalGap !== sched.totalGap) {
+      var gapNumEl = document.getElementById("gapNumber");
+      gapNumEl.classList.remove("pulse");
+      void gapNumEl.offsetWidth; // restart the animation
+      gapNumEl.classList.add("pulse");
+    }
+    lastTotalGap = sched.totalGap;
 
     var atomicCount = sched.edges.filter(function (e) { return e.atomic; }).length;
     var explain;
