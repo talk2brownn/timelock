@@ -827,6 +827,13 @@
   // just printing a result.
   // ---------------------------------------------------------------
   function tweenNumber(el, from, to, duration, fmt) {
+    // Set the true final value synchronously first. requestAnimationFrame is
+    // throttled to nothing on a backgrounded/non-rendering tab, so anything
+    // relying on rAF alone can get stuck showing a stale number forever.
+    // The rAF loop below only ever adds a smooth transition on top of a
+    // value that is already correct.
+    el.textContent = fmt(to);
+    if (from === to) return;
     var start = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - start) / duration);
@@ -834,6 +841,7 @@
       var val = from + (to - from) * eased;
       el.textContent = fmt(val);
       if (t < 1) requestAnimationFrame(frame);
+      else el.textContent = fmt(to);
     }
     requestAnimationFrame(frame);
   }
@@ -919,13 +927,16 @@
   }
 
   function tickFraction(el, num, den, duration) {
+    // Same guarantee as tweenNumber: the correct final fraction is set
+    // synchronously before any rAF-driven tick-up is attempted.
+    el.textContent = num + " / " + den;
     var start = performance.now();
     function frame(now) {
       var t = Math.min(1, (now - start) / duration);
       var eased = 1 - Math.pow(1 - t, 3);
       el.textContent = Math.round(num * eased) + " / " + den;
       if (t < 1) requestAnimationFrame(frame);
-      else flashOnce(el);
+      else { el.textContent = num + " / " + den; flashOnce(el); }
     }
     requestAnimationFrame(frame);
   }
