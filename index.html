@@ -192,10 +192,10 @@
   /* ---- gap report ---- */
   .gap-readout {
     position: relative; isolation: isolate;
-    border: 1px solid transparent; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+    border: 2px solid transparent; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
     display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
     background:
-      linear-gradient(var(--gap-soft), var(--gap-soft)) padding-box,
+      linear-gradient(color-mix(in srgb, var(--gap) 8%, var(--surface)), color-mix(in srgb, var(--gap) 8%, var(--surface))) padding-box,
       conic-gradient(from var(--angle), transparent 0%, var(--gap) var(--beam-spread, 12%), transparent calc(var(--beam-spread, 12%) + 2%), transparent 100%) border-box;
     animation: spinAngle var(--beam-speed, 5s) linear infinite;
   }
