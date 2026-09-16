@@ -26,6 +26,12 @@
     --grid-line: #d8dae6;
     --focus: #1c6bd6;
     --shadow: 0 1px 2px rgba(28,30,42,0.06), 0 10px 28px -14px rgba(28,30,42,0.16);
+    --aurora-opacity: 0;
+  }
+  @property --angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -47,6 +53,7 @@
       --grid-line: #323548;
       --focus: #7fa8ff;
       --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 34px -16px rgba(0,0,0,0.6);
+      --aurora-opacity: 0.55;
     }
   }
   :root[data-theme="dark"] {
@@ -56,11 +63,31 @@
     --atomic: #1f9c8f; --atomic-soft: #1f9c8f26; --gap: #e0605a; --gap-soft: #e0605a26;
     --grid-line: #323548; --focus: #7fa8ff;
     --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 14px 34px -16px rgba(0,0,0,0.6);
+    --aurora-opacity: 0.55;
   }
   * { box-sizing: border-box; }
   html { color-scheme: light dark; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Karla", ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.55; padding: 0 20px; overflow-wrap: break-word; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Karla", ui-sans-serif, system-ui, sans-serif; font-size: 16px; line-height: 1.55; padding: 0 20px; overflow-wrap: break-word; position: relative; }
   ::selection { background: var(--aot-soft); }
+
+  /* ---- aurora backdrop: dark-theme only, restrained, purely decorative depth ---- */
+  body::before {
+    content: ""; position: fixed; inset: -10%; z-index: -1; pointer-events: none;
+    opacity: var(--aurora-opacity);
+    background:
+      radial-gradient(38% 32% at 14% 12%, color-mix(in srgb, var(--aot) 55%, transparent) 0%, transparent 70%),
+      radial-gradient(34% 30% at 82% 18%, color-mix(in srgb, var(--jit) 45%, transparent) 0%, transparent 70%),
+      radial-gradient(36% 34% at 70% 86%, color-mix(in srgb, var(--gap) 40%, transparent) 0%, transparent 70%),
+      radial-gradient(30% 28% at 20% 82%, color-mix(in srgb, var(--atomic) 45%, transparent) 0%, transparent 70%);
+    filter: blur(80px);
+    animation: auroraDrift 26s ease-in-out infinite alternate;
+    transition: opacity 0.6s ease;
+  }
+  @keyframes auroraDrift {
+    0% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(-2%, 2%, 0) scale(1.06); }
+    100% { transform: translate3d(2%, -1%, 0) scale(1); }
+  }
   a { color: inherit; }
   .wrap { max-width: 1180px; margin: 0 auto; padding-block: 18px 60px; }
   .mono { font-family: "Fragment Mono", ui-monospace, monospace; }
@@ -140,11 +167,39 @@
   #dagSvg .exp-bar-fill, #dagSvg .exp-bar-track { transition: width 0.35s ease, x 0.35s ease, fill 0.35s ease; }
   #dagSvg .exp-halo { transition: x 0.35s ease, width 0.35s ease; }
 
+  /* live edges: a non-atomic edge carries a traveling dash of "unsettled" light
+     whose speed is set inline per-edge from the real exposure value (drawDag()).
+     An atomic (0-gap) edge instead gets a steady breathing glow: current is
+     flowing, nothing is waiting on it. */
+  @keyframes dashTravel { to { stroke-dashoffset: -24; } }
+  #dagSvg .edge-live { animation-name: dashTravel; animation-timing-function: linear; animation-iteration-count: infinite; }
+  @keyframes atomicGlow {
+    0%, 100% { filter: drop-shadow(0 0 0px var(--atomic)); }
+    50% { filter: drop-shadow(0 0 5px var(--atomic)); }
+  }
+  #dagSvg .edge-atomic { animation: atomicGlow 1.8s ease-in-out infinite; }
+
   @keyframes gapPulse { 0% { transform: scale(1); } 35% { transform: scale(1.16); } 100% { transform: scale(1); } }
   .gap-number.pulse { animation: gapPulse 0.5s ease; }
+  @keyframes gapFlash {
+    0% { text-shadow: 0 0 0px currentColor; }
+    25% { text-shadow: 0 0 18px currentColor; }
+    100% { text-shadow: 0 0 0px transparent; }
+  }
+  #gapSlots.flash, #gapSeconds.flash { animation: gapFlash 0.9s ease-out; }
+  .correctness-card .big.flash { animation: gapFlash 0.9s ease-out; }
 
   /* ---- gap report ---- */
-  .gap-readout { border: 1px solid var(--gap-soft); background: var(--gap-soft); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
+  .gap-readout {
+    position: relative; isolation: isolate;
+    border: 1px solid transparent; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+    display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+    background:
+      linear-gradient(var(--gap-soft), var(--gap-soft)) padding-box,
+      conic-gradient(from var(--angle), transparent 0%, var(--gap) var(--beam-spread, 12%), transparent calc(var(--beam-spread, 12%) + 2%), transparent 100%) border-box;
+    animation: spinAngle var(--beam-speed, 5s) linear infinite;
+  }
+  @keyframes spinAngle { to { --angle: 360deg; } }
   @media (max-width: 560px) { .gap-readout { grid-template-columns: 1fr; } }
   .gap-number { font-family: "Sora", sans-serif; font-weight: 800; font-size: 2.4rem; color: var(--gap); line-height: 1; white-space: nowrap; }
   .gap-number .unit { font-size: 0.9rem; font-weight: 600; color: var(--text-secondary); margin-left: 5px; }
@@ -704,7 +759,19 @@
       c.line.setAttribute("x2", x2 - 9); c.line.setAttribute("y2", y2);
       c.line.setAttribute("stroke", color);
       c.line.setAttribute("stroke-width", e.atomic ? 3 : 2);
-      c.line.setAttribute("stroke-dasharray", e.atomic ? "" : "5,4");
+      if (e.atomic) {
+        c.line.setAttribute("stroke-dasharray", "");
+        c.line.setAttribute("class", "edge-atomic");
+        c.line.style.animationDuration = "";
+      } else {
+        // Higher exposure = more unsettled = the traveling dash moves faster
+        // and glows harder. Duration and dash length come straight from e.exposure.
+        c.line.setAttribute("stroke-dasharray", "6,6");
+        c.line.setAttribute("class", "edge-live");
+        var speed = Math.max(0.35, 1.5 - e.exposure * 0.14);
+        c.line.style.animationDuration = speed + "s";
+        c.line.style.filter = "drop-shadow(0 0 " + Math.min(6, 1.5 + e.exposure) + "px " + color + ")";
+      }
 
       var barW = Math.max(0, (x2 - x1) - 20);
       var barX = x1 + 10, barY = y1 + 14;
@@ -753,19 +820,62 @@
   }
 
   // ---------------------------------------------------------------
+  // Number tweening: CSS can't animate text content, so every live number
+  // on the page (the gap readout, the correctness tallies) is driven by a
+  // short rAF interpolation instead of an instant textContent snap. This is
+  // what makes the page feel like it's continuously computing rather than
+  // just printing a result.
+  // ---------------------------------------------------------------
+  function tweenNumber(el, from, to, duration, fmt) {
+    var start = performance.now();
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      var val = from + (to - from) * eased;
+      el.textContent = fmt(val);
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  function flashOnce(el) {
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
+  }
+
+  // ---------------------------------------------------------------
   // Rendering: gap report
   // ---------------------------------------------------------------
   var lastTotalGap = null;
+  var lastGapSeconds = null;
   function renderGapReport(sched) {
-    document.getElementById("gapSlots").textContent = sched.totalGap;
-    document.getElementById("gapSeconds").textContent = (sched.totalGap * SLOT_MS / 1000).toFixed(2) + "s";
+    var slotsEl = document.getElementById("gapSlots");
+    var secEl = document.getElementById("gapSeconds");
+    var gapSeconds = sched.totalGap * SLOT_MS / 1000;
+    var fromSlots = lastTotalGap === null ? sched.totalGap : lastTotalGap;
+    var fromSeconds = lastGapSeconds === null ? gapSeconds : lastGapSeconds;
+    tweenNumber(slotsEl, fromSlots, sched.totalGap, 500, function (v) { return Math.round(v); });
+    tweenNumber(secEl, fromSeconds, gapSeconds, 500, function (v) { return v.toFixed(2) + "s"; });
+
+    // The border-beam around the whole readout spins faster and glows wider
+    // as the real total gap grows: severity you can see out of the corner
+    // of your eye, not just read as a number.
+    var readout = document.getElementById("gapReadout");
+    var beamSpeed = Math.max(1.4, 6 - sched.totalGap * 0.4);
+    var beamSpread = Math.min(46, 8 + sched.totalGap * 2.6);
+    readout.style.setProperty("--beam-speed", beamSpeed.toFixed(2) + "s");
+    readout.style.setProperty("--beam-spread", beamSpread.toFixed(1) + "%");
+
     if (lastTotalGap !== null && lastTotalGap !== sched.totalGap) {
       var gapNumEl = document.getElementById("gapNumber");
       gapNumEl.classList.remove("pulse");
       void gapNumEl.offsetWidth; // restart the animation
       gapNumEl.classList.add("pulse");
+      flashOnce(slotsEl);
+      flashOnce(secEl);
     }
     lastTotalGap = sched.totalGap;
+    lastGapSeconds = gapSeconds;
 
     var atomicCount = sched.edges.filter(function (e) { return e.atomic; }).length;
     var explain;
@@ -808,6 +918,18 @@
     });
   }
 
+  function tickFraction(el, num, den, duration) {
+    var start = performance.now();
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(num * eased) + " / " + den;
+      if (t < 1) requestAnimationFrame(frame);
+      else flashOnce(el);
+    }
+    requestAnimationFrame(frame);
+  }
+
   function renderCorrectness() {
     var grid = document.getElementById("correctnessGrid");
     var r = runAdversarialSuite(300);
@@ -815,15 +937,19 @@
     var acyclicPct = r.totalAcyclic ? Math.round((r.acyclicValid / r.totalAcyclic) * 100) : 0;
     grid.innerHTML =
       '<div class="correctness-card">' +
-      '  <div class="big' + (cyclicPct === 100 ? ' ok' : '') + '">' + r.cyclicDetected + ' / ' + r.totalCyclic + '</div>' +
+      '  <div class="big' + (cyclicPct === 100 ? ' ok' : '') + '" id="tallyCyclic">0 / ' + r.totalCyclic + '</div>' +
       '  <div class="lbl">injected circular dependencies caught, not silently scheduled</div>' +
       '  <div class="sub">' + cyclicPct + '% detection</div>' +
       '</div>' +
       '<div class="correctness-card">' +
-      '  <div class="big' + (acyclicPct === 100 ? ' ok' : '') + '">' + r.acyclicValid + ' / ' + r.totalAcyclic + '</div>' +
+      '  <div class="big' + (acyclicPct === 100 ? ' ok' : '') + '" id="tallyAcyclic">0 / ' + r.totalAcyclic + '</div>' +
       '  <div class="lbl">valid graphs scheduled with every dependency respected</div>' +
       '  <div class="sub">' + acyclicPct + '% valid, checked edge by edge</div>' +
       '</div>';
+    // Tick both tallies up from zero live, on real re-runs of the suite
+    // (seed 424242, 300 fresh trials each call), not just on first paint.
+    tickFraction(document.getElementById("tallyCyclic"), r.cyclicDetected, r.totalCyclic, 900);
+    tickFraction(document.getElementById("tallyAcyclic"), r.acyclicValid, r.totalAcyclic, 900);
   }
 
   async function renderAll() {
