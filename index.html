@@ -220,16 +220,32 @@
 
   /* ---- receipt chain ---- */
   .receipt-list { display: flex; flex-direction: column; gap: 7px; }
-  .receipt-row { background: var(--surface-2); border-radius: 9px; padding: 9px 12px; display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; min-width: 0; }
-  @media (max-width: 480px) { .receipt-row { grid-template-columns: 1fr; } }
+  .receipt-row { position: relative; background: var(--surface-2); border: 1px solid transparent; border-radius: 9px; padding: 9px 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; min-width: 0; transition: background 0.4s ease, border-color 0.4s ease; }
+  @media (max-width: 480px) { .receipt-row { grid-template-columns: 1fr auto; } }
   .receipt-row .who { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .receipt-row .who b { font-weight: 700; }
+  .receipt-row .who .strike { text-decoration: line-through; color: var(--text-muted); }
+  .receipt-row .who .claimed { color: var(--gap); font-weight: 700; margin-left: 3px; }
   .receipt-row .stage { font-family: "Fragment Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 6px; white-space: nowrap; justify-self: start; }
   .receipt-row .stage.aot { background: var(--aot-soft); color: var(--aot); }
   .receipt-row .stage.jit { background: var(--jit-soft); color: var(--jit); }
-  .receipt-row .hash { font-family: "Fragment Mono", monospace; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+  .receipt-row .hash { font-family: "Fragment Mono", monospace; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; transition: color 0.3s ease; }
   .receipt-row .hash:hover { color: var(--text-secondary); }
   .receipt-loading { color: var(--text-muted); font-size: 12px; font-family: "Fragment Mono", monospace; padding: 6px 2px; }
+
+  /* ---- tamper demo: real SHA-256 recomputed with one edited field ---- */
+  .tamper-btn { font-family: "Fragment Mono", monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); border-radius: 6px; padding: 4px 8px; cursor: pointer; white-space: nowrap; }
+  .tamper-btn:hover { border-color: var(--gap); color: var(--gap); }
+  .tamper-btn.active { background: var(--gap-soft); border-color: var(--gap); color: var(--gap); }
+  @keyframes breakWave {
+    0% { box-shadow: 0 0 0 2px var(--gap); background: color-mix(in srgb, var(--gap) 45%, var(--surface-2)); }
+    100% { box-shadow: 0 0 0 0 transparent; background: color-mix(in srgb, var(--gap) 12%, var(--surface-2)); }
+  }
+  .receipt-row.tampered { border-color: var(--gap); background: color-mix(in srgb, var(--gap) 16%, var(--surface-2)); }
+  .receipt-row.broken { border-color: var(--gap-soft); background: color-mix(in srgb, var(--gap) 12%, var(--surface-2)); animation: breakWave 0.7s ease-out backwards; }
+  .receipt-row.broken .hash { color: var(--gap); font-weight: 700; }
+  .tamper-banner { margin-top: 4px; padding: 10px 14px; border-radius: 10px; background: var(--gap-soft); border: 1px solid var(--gap); color: var(--text); font-size: 12.5px; display: none; }
+  .tamper-banner strong { color: var(--gap); }
 
   /* ---- correctness ---- */
   .correctness-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -319,8 +335,9 @@
 
   <div class="tiles-grid">
     <section class="panel">
-      <div class="panel-title"><span class="t">Receipt chain</span><span class="cap">real SHA-256, folded per step</span></div>
+      <div class="panel-title"><span class="t">Receipt chain</span><span class="cap">real SHA-256, folded per step · try tampering one</span></div>
       <div class="receipt-list" id="receiptList"></div>
+      <div class="tamper-banner" id="tamperBanner"></div>
     </section>
     <section class="panel">
       <div class="panel-title"><span class="t">Proved, not demoed</span><span class="cap">300 adversarial graphs, seed 424242</span></div>
@@ -391,7 +408,7 @@
     }
   };
 
-  var state = { wf: "rebalance", contention: 2, overrides: {} };
+  var state = { wf: "rebalance", contention: 2, overrides: {}, tamperStepId: null };
 
   function getSteps() {
     var base = WORKFLOWS[state.wf].steps;
@@ -484,7 +501,12 @@
     return Array.from(new Uint8Array(buf)).map(function (b) { return b.toString(16).padStart(2, "0"); }).join("");
   }
 
-  async function computeReceiptChain(sched) {
+  // tamperId, when set, causes that one step's recorded landing slot to be
+  // silently edited before it's folded into the hash. Nothing about the
+  // hashing itself is faked: this recomputes the real chain end to end with
+  // one real input changed, so everything from that point on gets a
+  // genuinely different SHA-256 digest, not a simulated "broken" flag.
+  async function computeReceiptChain(sched, tamperId) {
     if (!sched.feasible) return [];
     var chain = [];
     var prev = "genesis";
@@ -492,9 +514,12 @@
       var id = sched.order[i];
       var s = sched.byId[id];
       var kind = classify(s);
-      var payload = JSON.stringify({ prev: prev, id: id, kind: kind, landSlot: sched.landSlot[id] });
+      var trueLand = sched.landSlot[id];
+      var tampered = tamperId === id;
+      var claimedLand = tampered ? trueLand + 1 : trueLand;
+      var payload = JSON.stringify({ prev: prev, id: id, kind: kind, landSlot: claimedLand });
       var hash = await sha256Hex(payload);
-      chain.push({ id: id, label: s.label, kind: kind, landSlot: sched.landSlot[id], hash: hash });
+      chain.push({ id: id, label: s.label, kind: kind, landSlot: trueLand, claimedLand: claimedLand, tampered: tampered, hash: hash });
       prev = hash;
     }
     return chain;
@@ -570,6 +595,7 @@
       btn.addEventListener("click", function () {
         state.wf = key;
         state.overrides = {};
+        state.tamperStepId = null;
         renderWfPicker();
         renderAll();
       });
@@ -910,20 +936,40 @@
     });
   }
 
-  function renderReceiptChain(chain) {
+  function renderReceiptChain(chain, canonical, tamperId) {
     var list = document.getElementById("receiptList");
-    if (!chain.length) { list.innerHTML = '<div class="receipt-loading">computing digests…</div>'; return; }
+    var banner = document.getElementById("tamperBanner");
+    if (!chain.length) { list.innerHTML = '<div class="receipt-loading">computing digests…</div>'; banner.style.display = "none"; return; }
     list.innerHTML = "";
+    var brokenFrom = -1;
     chain.forEach(function (r, i) {
+      var canonHash = canonical && canonical[i] ? canonical[i].hash : r.hash;
+      var broken = canonHash !== r.hash;
+      if (broken && brokenFrom === -1) brokenFrom = i;
       var row = document.createElement("div");
-      row.className = "receipt-row";
+      row.className = "receipt-row" + (broken ? " broken" : "") + (r.tampered ? " tampered" : "");
+      if (broken) row.style.animationDelay = ((i - brokenFrom) * 90) + "ms";
       var stageLbl = r.kind === "AOT" ? "reserved" : "pre-confirmed";
+      var landText = r.tampered
+        ? '<span class="strike">' + r.landSlot + '</span><span class="claimed">' + r.claimedLand + '</span>'
+        : String(r.landSlot);
       row.innerHTML =
-        '<div class="who"><b>' + (i + 1) + '. ' + r.label + '</b> · lands slot ' + r.landSlot + '</div>' +
+        '<div class="who"><b>' + (i + 1) + '. ' + r.label + '</b> · lands slot ' + landText + '</div>' +
         '<div class="stage ' + r.kind.toLowerCase() + '">' + stageLbl + '</div>' +
-        '<div class="hash" title="sha256: ' + r.hash + '">' + r.hash.slice(0, 16) + '…</div>';
+        '<div class="hash" title="sha256: ' + r.hash + '">' + r.hash.slice(0, 16) + '…</div>' +
+        '<button class="tamper-btn' + (r.tampered ? ' active' : '') + '" data-tamper-id="' + r.id + '" title="Recompute this step\'s real SHA-256 with the recorded landing slot edited by one">' +
+        (r.tampered ? '✕ restore' : '✎ tamper') + '</button>';
       list.appendChild(row);
     });
+
+    if (tamperId && brokenFrom !== -1) {
+      var brokenCount = chain.length - brokenFrom;
+      banner.style.display = "block";
+      banner.innerHTML = '<strong>' + brokenCount + ' of ' + chain.length + '</strong> receipt' + (brokenCount === 1 ? "" : "s") +
+        ' after step ' + (brokenFrom + 1) + ' no longer match the original chain. One edited field, recomputed with the real SHA-256 that was already there — every digest folded after it changed too.';
+    } else {
+      banner.style.display = "none";
+    }
   }
 
   function tickFraction(el, num, den, duration) {
@@ -963,15 +1009,35 @@
     tickFraction(document.getElementById("tallyAcyclic"), r.acyclicValid, r.totalAcyclic, 900);
   }
 
+  var currentSched = null;
+
+  async function refreshReceiptChain(sched) {
+    renderReceiptChain([], null, null);
+    var canonical = await computeReceiptChain(sched, null);
+    // The schedule may have moved on while we were awaiting digests (slider
+    // dragged again); bail rather than paint a stale chain.
+    if (sched !== currentSched) return;
+    var display = state.tamperStepId ? await computeReceiptChain(sched, state.tamperStepId) : canonical;
+    if (sched !== currentSched) return;
+    renderReceiptChain(display, canonical, state.tamperStepId);
+  }
+
   async function renderAll() {
     renderSteps();
     var sched = computeSchedule();
+    currentSched = sched;
     drawDag(sched);
     renderGapReport(sched);
-    renderReceiptChain([]);
-    var chain = await computeReceiptChain(sched);
-    renderReceiptChain(chain);
+    await refreshReceiptChain(sched);
   }
+
+  document.getElementById("receiptList").addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".tamper-btn") : null;
+    if (!btn) return;
+    var id = btn.getAttribute("data-tamper-id");
+    state.tamperStepId = (state.tamperStepId === id) ? null : id;
+    if (currentSched) refreshReceiptChain(currentSched);
+  });
 
   document.getElementById("contentionSlider").addEventListener("input", function (e) {
     state.contention = parseInt(e.target.value, 10);
