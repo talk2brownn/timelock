@@ -259,6 +259,26 @@
   .correctness-card .lbl { font-size: 11px; color: var(--text-secondary); margin-top: 6px; }
   .correctness-card .sub { font-family: "Fragment Mono", monospace; font-size: 10px; color: var(--text-muted); margin-top: 8px; }
 
+  /* ---- live adversarial run ---- */
+  .panel-title .cap-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .run-live-btn { font-family: "Fragment Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .run-live-btn:hover:not(:disabled) { border-color: var(--atomic); color: var(--atomic); }
+  .run-live-btn:disabled { opacity: 0.7; cursor: default; }
+  @keyframes liveRunPulse {
+    0%, 100% { box-shadow: 0 0 0 1px var(--atomic-soft) inset; }
+    50% { box-shadow: 0 0 0 1px var(--atomic) inset, 0 0 16px -4px var(--atomic); }
+  }
+  #correctnessPanel.live-running { animation: liveRunPulse 1s ease-in-out infinite; }
+  #correctnessPanel.live-failing { animation: liveRunPulse 1s ease-in-out infinite; }
+  #correctnessPanel.live-failing { --atomic: var(--gap); --atomic-soft: var(--gap-soft); }
+  .live-feed-row { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .live-feed { display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
+  @keyframes feedPop { 0% { transform: scale(0.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .feed-chip { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-size: 10px; font-family: "Fragment Mono", monospace; font-weight: 700; animation: feedPop 0.25s ease-out; }
+  .feed-chip.feed-pass { background: var(--atomic-soft); color: var(--atomic); }
+  .feed-chip.feed-fail { background: var(--gap-soft); color: var(--gap); }
+  .live-feed-status { font-family: "Fragment Mono", monospace; font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
   /* ---- mechanism table ---- */
   .mech-table-wrap { overflow-x: auto; }
   .mech-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
@@ -342,9 +362,19 @@
       <div class="receipt-list" id="receiptList"></div>
       <div class="tamper-banner" id="tamperBanner"></div>
     </section>
-    <section class="panel">
-      <div class="panel-title"><span class="t">Proved, not demoed</span><span class="cap">300 adversarial graphs, seed 424242</span></div>
+    <section class="panel" id="correctnessPanel">
+      <div class="panel-title">
+        <span class="t">Proved, not demoed</span>
+        <span class="cap-row">
+          <span class="cap">300 adversarial graphs, seed 424242</span>
+          <button class="run-live-btn" id="runLiveBtn" title="Re-run the same 300 trials one at a time, live, instead of a pre-computed number">↻ run live</button>
+        </span>
+      </div>
       <div class="correctness-grid" id="correctnessGrid"></div>
+      <div class="live-feed-row" id="liveFeedRow" style="display:none;">
+        <div class="live-feed" id="liveFeed"></div>
+        <div class="live-feed-status" id="liveFeedStatus"></div>
+      </div>
     </section>
   </div>
 
@@ -561,26 +591,37 @@
     return steps;
   }
 
-  function runAdversarialSuite(trials) {
+  // One shared generator drives both the instant pre-computed tally (used on
+  // first paint) and the live streaming run (used when the user asks to
+  // watch it happen). Same seed, same trials, same compiler either way —
+  // "live" mode just reveals the same computation one trial at a time
+  // instead of doing it all before the first paint.
+  function* adversarialTrials(trials) {
     var rng = mulberrySeed(424242);
-    var r = { totalCyclic: 0, cyclicDetected: 0, totalAcyclic: 0, acyclicValid: 0 };
     for (var t = 0; t < trials; t++) {
       var forceCycle = t % 2 === 0;
       var steps = generateRandomWorkflow(rng, forceCycle);
       var res = compileWorkflow(steps, 2);
+      var passed;
       if (forceCycle) {
-        r.totalCyclic++;
-        if (!res.feasible) r.cyclicDetected++;
+        passed = !res.feasible;
       } else {
-        r.totalAcyclic++;
-        if (res.feasible) {
-          var ok = res.edges.every(function (e) {
-            var pl = res.landSlot[e.from], cl = res.landSlot[e.to];
-            return e.atomic ? cl === pl : cl > pl;
-          });
-          if (ok) r.acyclicValid++;
-        }
+        passed = res.feasible && res.edges.every(function (e) {
+          var pl = res.landSlot[e.from], cl = res.landSlot[e.to];
+          return e.atomic ? cl === pl : cl > pl;
+        });
       }
+      yield { index: t, forceCycle: forceCycle, passed: passed };
+    }
+  }
+
+  function runAdversarialSuite(trials) {
+    var r = { totalCyclic: 0, cyclicDetected: 0, totalAcyclic: 0, acyclicValid: 0 };
+    var it = adversarialTrials(trials), step;
+    while (!(step = it.next()).done) {
+      var v = step.value;
+      if (v.forceCycle) { r.totalCyclic++; if (v.passed) r.cyclicDetected++; }
+      else { r.totalAcyclic++; if (v.passed) r.acyclicValid++; }
     }
     return r;
   }
@@ -1012,6 +1053,91 @@
     tickFraction(document.getElementById("tallyCyclic"), r.cyclicDetected, r.totalCyclic, 900);
     tickFraction(document.getElementById("tallyAcyclic"), r.acyclicValid, r.totalAcyclic, 900);
   }
+
+  // ---------------------------------------------------------------
+  // Live adversarial run: the exact same 300-trial, seed-424242 suite as
+  // renderCorrectness above, but revealed one trial at a time instead of
+  // computed instantly before first paint. Nothing is pre-baked for this —
+  // it's the same generator, same compiler, just watched happening.
+  // ---------------------------------------------------------------
+  var liveRunActive = false;
+  function runLiveSuite(trials) {
+    if (liveRunActive) return;
+    liveRunActive = true;
+
+    var btn = document.getElementById("runLiveBtn");
+    var panel = document.getElementById("correctnessPanel");
+    var feedRow = document.getElementById("liveFeedRow");
+    var feedEl = document.getElementById("liveFeed");
+    var statusEl = document.getElementById("liveFeedStatus");
+    var tallyCyclicEl = document.getElementById("tallyCyclic");
+    var tallyAcyclicEl = document.getElementById("tallyAcyclic");
+
+    btn.disabled = true;
+    btn.textContent = "running…";
+    panel.classList.add("live-running");
+    feedRow.style.display = "block";
+    feedEl.innerHTML = "";
+
+    var it = adversarialTrials(trials);
+    var r = { totalCyclic: 0, cyclicDetected: 0, totalAcyclic: 0, acyclicValid: 0 };
+    var seen = 0;
+    var anyFail = false;
+    var batchSize = 4;
+
+    function paintFeed(v) {
+      var chip = document.createElement("span");
+      var failed = !v.passed;
+      chip.className = "feed-chip " + (failed ? "feed-fail" : "feed-pass");
+      chip.textContent = failed ? "✗" : "✓";
+      chip.title = "trial " + (v.index + 1) + ": " + (v.forceCycle
+        ? (v.passed ? "injected cycle, correctly rejected" : "injected cycle, MISSED")
+        : (v.passed ? "valid graph, scheduled correctly" : "valid graph, INCORRECTLY scheduled"));
+      feedEl.appendChild(chip);
+      // Keep the strip from growing forever; the running tallies are the
+      // record, this row is just "what just happened".
+      while (feedEl.children.length > 40) feedEl.removeChild(feedEl.firstChild);
+    }
+
+    function step() {
+      for (var i = 0; i < batchSize; i++) {
+        var res = it.next();
+        if (res.done) { finish(); return; }
+        var v = res.value;
+        seen++;
+        if (v.forceCycle) { r.totalCyclic++; if (v.passed) r.cyclicDetected++; }
+        else { r.totalAcyclic++; if (v.passed) r.acyclicValid++; }
+        if (!v.passed) anyFail = true;
+        paintFeed(v);
+      }
+      tallyCyclicEl.textContent = r.cyclicDetected + " / " + r.totalCyclic;
+      tallyAcyclicEl.textContent = r.acyclicValid + " / " + r.totalAcyclic;
+      panel.classList.toggle("live-failing", anyFail);
+      statusEl.textContent = seen + " / " + trials + " trials run live";
+      setTimeout(step, 25);
+    }
+
+    function finish() {
+      var cyclicPct = r.totalCyclic ? Math.round((r.cyclicDetected / r.totalCyclic) * 100) : 0;
+      var acyclicPct = r.totalAcyclic ? Math.round((r.acyclicValid / r.totalAcyclic) * 100) : 0;
+      tallyCyclicEl.classList.toggle("ok", cyclicPct === 100);
+      tallyAcyclicEl.classList.toggle("ok", acyclicPct === 100);
+      flashOnce(tallyCyclicEl);
+      flashOnce(tallyAcyclicEl);
+      statusEl.textContent = trials + " / " + trials + " trials run live — " +
+        (anyFail ? "at least one trial failed, see the red squares above" : "every trial matched what the pre-computed tally already claimed");
+      panel.classList.remove("live-running");
+      btn.disabled = false;
+      btn.textContent = "↻ run live";
+      liveRunActive = false;
+    }
+
+    step();
+  }
+
+  document.getElementById("runLiveBtn").addEventListener("click", function () {
+    runLiveSuite(300);
+  });
 
   var currentSched = null;
 
