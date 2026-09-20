@@ -1,3 +1,4 @@
+<meta charset="UTF-8" />
 <title>Timelock</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="A compiler for multi-step Raiku execution workflows that quantifies the exact atomicity gap between what each leg guarantees and what the whole plan needs." />
@@ -222,8 +223,10 @@
   .receipt-list { display: flex; flex-direction: column; gap: 7px; }
   .receipt-row { position: relative; background: var(--surface-2); border: 1px solid transparent; border-radius: 9px; padding: 9px 12px; display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; min-width: 0; transition: background 0.4s ease, border-color 0.4s ease; }
   @media (max-width: 480px) { .receipt-row { grid-template-columns: 1fr auto; } }
-  .receipt-row .who { font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .receipt-row .who { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .receipt-row .who-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .receipt-row .who b { font-weight: 700; }
+  .receipt-row .who-meta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
   .receipt-row .who .strike { text-decoration: line-through; color: var(--text-muted); }
   .receipt-row .who .claimed { color: var(--gap); font-weight: 700; margin-left: 3px; }
   .receipt-row .stage { font-family: "Fragment Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 8px; border-radius: 6px; white-space: nowrap; justify-self: start; }
@@ -954,7 +957,8 @@
         ? '<span class="strike">' + r.landSlot + '</span><span class="claimed">' + r.claimedLand + '</span>'
         : String(r.landSlot);
       row.innerHTML =
-        '<div class="who"><b>' + (i + 1) + '. ' + r.label + '</b> · lands slot ' + landText + '</div>' +
+        '<div class="who"><div class="who-label" title="' + r.label + '"><b>' + (i + 1) + '. ' + r.label + '</b></div>' +
+        '<div class="who-meta">lands slot ' + landText + '</div></div>' +
         '<div class="stage ' + r.kind.toLowerCase() + '">' + stageLbl + '</div>' +
         '<div class="hash" title="sha256: ' + r.hash + '">' + r.hash.slice(0, 16) + '…</div>' +
         '<button class="tamper-btn' + (r.tampered ? ' active' : '') + '" data-tamper-id="' + r.id + '" title="Recompute this step\'s real SHA-256 with the recorded landing slot edited by one">' +
