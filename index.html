@@ -158,6 +158,11 @@
   .controls input[type="range"] { flex: 1; accent-color: var(--gap); }
   .controls .val { font-family: "Fragment Mono", monospace; font-weight: 700; color: var(--text); }
   .controls .hint { color: var(--text-muted); font-size: 11px; }
+  .position-wrap { display: flex; align-items: center; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+  .position-prefix { color: var(--text-muted); font-family: "Fragment Mono", monospace; font-weight: 700; }
+  .position-wrap input { border: none; background: transparent; color: var(--text); font: inherit; font-family: "Fragment Mono", monospace; font-weight: 700; font-size: 0.95rem; width: 100%; min-width: 0; }
+  .position-wrap input:focus { outline: none; }
+  .position-wrap:focus-within { border-color: var(--gap); }
 
   /* ---- DAG diagram ---- */
   .dag-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 16px; background: var(--surface-2); }
@@ -207,6 +212,19 @@
   .gap-copy { font-size: 0.87rem; color: var(--text-secondary); min-width: 0; }
   .gap-copy strong { color: var(--text); }
   .gap-explain { margin-top: 3px; }
+
+  /* ---- dollar-risk translation ---- */
+  .risk-readout {
+    border: 1px solid var(--border); background: var(--surface-2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+    display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+  }
+  @media (max-width: 560px) { .risk-readout { grid-template-columns: 1fr; } }
+  .risk-number { font-family: "Sora", sans-serif; font-weight: 800; font-size: 1.9rem; color: var(--text); line-height: 1; white-space: nowrap; }
+  .risk-number .unit { display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-top: 3px; }
+  .risk-copy { font-size: 0.87rem; color: var(--text-secondary); min-width: 0; }
+  .risk-copy strong { color: var(--text); }
+  .risk-explain { margin-top: 3px; font-size: 0.8rem; color: var(--text-muted); }
+  #riskDollars.flash { animation: gapFlash 0.9s ease-out; }
 
   .edge-list { display: flex; flex-direction: column; gap: 8px; }
   .edge-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -332,6 +350,14 @@
         </div>
         <span class="hint">extra slots a JIT leg may need to win its auction</span>
       </div>
+      <div class="controls" style="margin-top:10px;">
+        <label>Position size this workflow moves</label>
+        <div class="position-wrap">
+          <span class="position-prefix">$</span>
+          <input type="text" inputmode="numeric" id="positionSize" class="num" value="250,000" />
+        </div>
+        <span class="hint">translates the gap above into a real dollar-risk estimate</span>
+      </div>
     </aside>
 
     <main class="panel">
@@ -350,6 +376,13 @@
         <div class="gap-copy">
           <div><strong id="gapSeconds">0.0s</strong> of exposure Raiku doesn't guarantee, even if every leg wins on the first try.</div>
           <div class="gap-explain" id="gapExplain"></div>
+        </div>
+      </div>
+      <div class="risk-readout" id="riskReadout">
+        <div class="risk-number"><span id="riskDollars">$0</span><span class="unit">at risk, one std. dev.</span></div>
+        <div class="risk-copy">
+          <div>What <strong id="riskPositionEcho">$250,000</strong> of price movement could do to this workflow while it sits in that gap, modeled — not measured.</div>
+          <div class="risk-explain" id="riskExplain"></div>
         </div>
       </div>
       <div class="edge-list" id="edgeList"></div>
@@ -396,7 +429,7 @@
     <summary>Methodology &amp; sources</summary>
     <div class="method-box">
       <p><strong>Documented and used as-is:</strong> the AOT and JIT mechanics above, same-block atomic grouping, and pre-confirmation, quoted from Raiku's own blog. The "multi-leg trades must execute whole" requirement is Raiku's own language from the Engineering Contract series. Solana's real 400ms slot time converts slots to seconds.</p>
-      <p><strong>Modeled and disclosed:</strong> the one-slot floor per non-atomic dependency is structural, two transactions can't land in the same instant unless bundled. The contention slider is a disclosed, illustrative assumption, not a measured figure. Raiku's SDK stays gated pending public testnet, so nothing here reads from Raiku's real systems.</p>
+      <p><strong>Modeled and disclosed:</strong> the one-slot floor per non-atomic dependency is structural, two transactions can't land in the same instant unless bundled. The contention slider is a disclosed, illustrative assumption, not a measured figure. The dollar-risk figure translates the gap into a price-risk estimate using standard square-root-of-time volatility scaling against an assumed 80%/yr annualized volatility, a commonly cited range for SOL, not a measured or live figure, and one standard deviation, not a worst case. Raiku's SDK stays gated pending public testnet, so nothing here reads from Raiku's real systems.</p>
       <p class="src">Sources: <a href="https://raiku.com/blog/the-engineering-contract-what-the-rewritten-contract-makes-possible" target="_blank" rel="noopener">raiku.com, the Engineering Contract</a> &middot; <a href="https://raiku.com/blog/raiku-the-deterministic-execution-layer-for-perp-dexs" target="_blank" rel="noopener">raiku.com, deterministic execution for perp DEXs</a> &middot; <a href="https://raikuhandbook.org/jit-vs-aot.html" target="_blank" rel="noopener">raikuhandbook.org, JIT vs AOT</a></p>
     </div>
   </details>
@@ -412,6 +445,13 @@
 (function () {
   "use strict";
   var SLOT_MS = 400;
+  // Dollar-risk translation: a disclosed, illustrative volatility assumption
+  // (not a measured figure), exactly like the contention slider elsewhere on
+  // this page. Standard square-root-of-time scaling: one standard deviation
+  // of price move over a short window ≈ position size × annualized vol ×
+  // sqrt(window seconds / seconds per year).
+  var ASSUMED_ANNUAL_VOL = 0.80; // 80%/yr, a commonly cited range for SOL
+  var SECONDS_PER_YEAR = 365 * 24 * 3600;
   var NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
   function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
@@ -441,7 +481,7 @@
     }
   };
 
-  var state = { wf: "rebalance", contention: 2, overrides: {}, tamperStepId: null };
+  var state = { wf: "rebalance", contention: 2, overrides: {}, tamperStepId: null, positionSize: 250000 };
 
   function getSteps() {
     var base = WORKFLOWS[state.wf].steps;
@@ -980,6 +1020,57 @@
     });
   }
 
+  // ---------------------------------------------------------------
+  // Dollar-risk translation: turns the slot/second gap above into a real
+  // dollar figure against a position size the user enters. This is a
+  // disclosed model (square-root-of-time volatility scaling against an
+  // assumed annualized vol), not a measured number — the same honesty
+  // standard as the contention slider already on this page.
+  // ---------------------------------------------------------------
+  var lastRiskDollars = null;
+  function computeDollarRisk(totalGapSlots, positionSize) {
+    var exposureSeconds = totalGapSlots * SLOT_MS / 1000;
+    var volPerSecond = ASSUMED_ANNUAL_VOL / Math.sqrt(SECONDS_PER_YEAR);
+    return positionSize * volPerSecond * Math.sqrt(exposureSeconds);
+  }
+
+  function formatUsd(v) {
+    return "$" + Math.round(v).toLocaleString("en-US");
+  }
+
+  function renderRiskReadout(sched) {
+    var risk = computeDollarRisk(sched.totalGap, state.positionSize);
+    var dollarsEl = document.getElementById("riskDollars");
+    var fromRisk = lastRiskDollars === null ? risk : lastRiskDollars;
+    tweenNumber(dollarsEl, fromRisk, risk, 500, formatUsd);
+    if (lastRiskDollars !== null && Math.round(lastRiskDollars) !== Math.round(risk)) {
+      flashOnce(dollarsEl);
+    }
+    lastRiskDollars = risk;
+
+    document.getElementById("riskPositionEcho").textContent = formatUsd(state.positionSize);
+
+    var exposureSeconds = (sched.totalGap * SLOT_MS / 1000).toFixed(2);
+    document.getElementById("riskExplain").textContent =
+      sched.totalGap === 0
+        ? "No gap, no window for price to move against you — the model has nothing to scale."
+        : "modeled: " + formatUsd(state.positionSize) + " × " + Math.round(ASSUMED_ANNUAL_VOL * 100) + "%/yr assumed volatility, scaled by √(" + exposureSeconds + "s), one standard deviation, not a worst case.";
+  }
+
+  function parsePositionInput(raw) {
+    var n = parseFloat(String(raw).replace(/[^0-9.]/g, ""));
+    if (!isFinite(n) || n < 0) n = 0;
+    return n;
+  }
+
+  document.getElementById("positionSize").addEventListener("input", function (e) {
+    state.positionSize = parsePositionInput(e.target.value);
+    if (currentSched) renderRiskReadout(currentSched);
+  });
+  document.getElementById("positionSize").addEventListener("blur", function (e) {
+    e.target.value = Math.round(state.positionSize).toLocaleString("en-US");
+  });
+
   function renderReceiptChain(chain, canonical, tamperId) {
     var list = document.getElementById("receiptList");
     var banner = document.getElementById("tamperBanner");
@@ -1158,6 +1249,7 @@
     currentSched = sched;
     drawDag(sched);
     renderGapReport(sched);
+    renderRiskReadout(sched);
     await refreshReceiptChain(sched);
   }
 
